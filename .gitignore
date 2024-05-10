@@ -1,0 +1,8 @@
+*.tar
+*.iml
+.idea
+datasets/
+*.png
+evaluation/
+venv/
+.DS_Store
