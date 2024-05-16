@@ -33,7 +33,7 @@ class Discriminator(nn.Module):
         layers.append(
             nn.Conv2d(in_channels, 1, kernel_size=4, stride=1, padding=1)  # [512,31,31] -> [1,30,30]
         )
-
+        layers.append(nn.Sigmoid())
         self.model = nn.Sequential(*layers)
 
     def forward(self, x, y):
