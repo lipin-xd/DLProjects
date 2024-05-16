@@ -2,7 +2,7 @@ import torch
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
-DEVICE = 'mps'
+DEVICE = 'cpu'
 TRAIN_DIR = "data/train"
 VAL_DIR = "data/val"
 LEARNING_RATE = 2e-4
@@ -16,7 +16,7 @@ NUM_EPOCHS = 200
 LOAD_MODEL = False
 SAVE_MODEL = True
 CHECKPOINT_DISC = "disc.pth.tar"
-CHECKPOINT_GEN = "gen.pth.tar"
+CHECKPOINT_GEN = "gen.pth_1.tar"
 
 both_transform = A.Compose(
     [A.Resize(width=256, height=256),], additional_targets={"image0": "image"},

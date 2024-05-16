@@ -1,3 +1,7 @@
+import os
+
+import cv2
+from PIL import Image
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
@@ -5,6 +9,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 from tqdm import tqdm
+import numpy as np
 
 import config
 from dataset import MapDataset
@@ -106,23 +111,47 @@ def test():
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False, num_workers=config.NUM_WORKERS)
     gen.eval()
     mse_loss = torch.nn.MSELoss()
+    rmse_train = []
+    # for idx, (x, y) in enumerate(train_loader):
+    #     x = x.to(config.DEVICE)
+    #     y = y.to(config.DEVICE)
+    #     y_fake = gen(x)
+    #     rmse = torch.sqrt(mse_loss(y, y_fake))
+    #     rmse_train.append(rmse)
+    #     save_image(torch.concat((x, y, y_fake), 3), f'./evaluation/train_output/train_{idx}_{rmse:.3f}.png')
+    # print(f'rmse_train={torch.tensor(rmse_train).mean().item()}')
 
-    for idx, (x, y) in enumerate(train_loader):
-        x = x.to(config.DEVICE)
-        y = y.to(config.DEVICE)
-        y_fake = gen(x)
-        rmse = torch.sqrt(mse_loss(y, y_fake))
-        save_image(torch.concat((x, y, y_fake), 3), f'./evaluation/train_output/train_{idx}_{rmse:.3f}.png')
     val_dataset = MapDataset(root_dir='../datasets/facades/val')
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+    rmse_val = []
     for idx, (x, y) in enumerate(val_loader):
         x = x.to(config.DEVICE)
         y = y.to(config.DEVICE)
         y_fake = gen(x)
         rmse = torch.sqrt(mse_loss(y, y_fake))
+        rmse_val.append(rmse)
         save_image(torch.concat((x, y, y_fake), 3), f'./evaluation/val_output/val_{idx}_{rmse:.3f}.png')
+    print(f'rmse_val={torch.tensor(rmse_val).mean().item()}')
+
+
+def evaluate():
+    img_path = './images'
+    mse_loss = torch.nn.MSELoss()
+    mse_img = []
+    for img in (os.listdir(img_path)):
+        prefix = img[0:-10]
+        suffix = img[-10:]
+        if (suffix == 'real_B.png'):
+            real_img = np.array(Image.open(img_path + '/' + prefix + 'real_B.png')).astype(dtype=np.float32) / 255
+            real_img = torch.tensor(real_img).permute(2, 0, 1)
+            fake_img = np.array(Image.open(img_path + '/' + prefix + 'fake_B.png')).astype(dtype=np.float32) / 255
+            fake_img = torch.tensor(fake_img).permute(2, 0, 1)
+            loss = mse_loss(real_img, fake_img)
+            mse_img.append(loss)
+    print(f'{torch.tensor(mse_img).mean().item():.3f}')
 
 
 if __name__ == '__main__':
-    train()
-    test()
+    # train()
+    # test()
+    evaluate()
