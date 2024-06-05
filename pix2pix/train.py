@@ -1,15 +1,14 @@
 import os
 
-import cv2
-from PIL import Image
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torchmetrics.image
+from PIL import Image
 from torch.utils.data import DataLoader
-from torchvision.utils import save_image
 from tqdm import tqdm
-import numpy as np
 
 import config
 from dataset import MapDataset
@@ -37,10 +36,9 @@ def train_fn(disc, gen, loader, opt_disc, opt_gen, l1_loss, bce, epoch):
         D_fake_loss = bce(D_fake, torch.zeros_like(D_fake))
         D_loss = (D_real_loss + D_fake_loss) / 2
 
-        if i % 5 == 0:
-            disc.zero_grad()
-            D_loss.backward()
-            opt_disc.step()
+        opt_disc.zero_grad()
+        D_loss.backward()
+        opt_disc.step()
 
         # Train generator
         D_fake = disc(label_img, generated_img)
@@ -51,9 +49,6 @@ def train_fn(disc, gen, loader, opt_disc, opt_gen, l1_loss, bce, epoch):
         opt_gen.zero_grad()
         G_loss.backward()
         opt_gen.step()
-
-        generator_losses.append(G_loss.mean().item() / 10)
-        discriminator_losses.append(D_loss.mean().item())
 
         if i % 10 == 0:
             loop.set_postfix(
@@ -67,21 +62,16 @@ def train_fn(disc, gen, loader, opt_disc, opt_gen, l1_loss, bce, epoch):
                 L1_loss=L1.mean().item(),
                 G_loss=G_loss.mean().item(),
             )
-    plt.figure(figsize=(10, 5))
-    plt.title("Generator and Discriminator Loss During Training")
-    plt.plot(generator_losses, label="Generator Loss")
-    plt.plot(discriminator_losses, label="Discriminator Loss")
-    plt.xlabel("Iterations")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.show()
+        if (i == loop.__len__() - 1):
+            generator_losses.append(G_loss.mean().item() / 10)
+            discriminator_losses.append(D_loss.mean().item())
 
 
 def train():
-    disc = Discriminator(in_channel=3).to(config.DEVICE)
-    gen = Generator(in_channels=3).to(config.DEVICE)
+    disc = Discriminator(in_channel=1).to(config.DEVICE)
+    gen = Generator(in_channels=1).to(config.DEVICE)
     opt_disc = optim.Adam(disc.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
-    opt_gen = optim.Adam(gen.parameters(), lr=config.LEARNING_RATE * 2, betas=(0.5, 0.999))
+    opt_gen = optim.Adam(gen.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
     BCE = nn.BCEWithLogitsLoss()
     L1_LOSS = nn.L1Loss()
 
@@ -89,10 +79,12 @@ def train():
         load_checkpoint(config.CHECKPOINT_GEN, gen, opt_gen, config.LEARNING_RATE)
         load_checkpoint(config.CHECKPOINT_DISC, disc, opt_disc, config.LEARNING_RATE)
 
-    train_dataset = MapDataset(root_dir='../datasets/facades/train')
-    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, num_workers=config.NUM_WORKERS)
+    train_dataset = MapDataset(source_dir='../datasets/Private_Dataset_NC_ART_PV/nc_img',
+                               target_dir='../datasets/Private_Dataset_NC_ART_PV/pv_img')
+    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=config.NUM_WORKERS)
 
-    val_dataset = MapDataset(root_dir='../datasets/facades/val')
+    val_dataset = MapDataset(source_dir='../datasets/Private_Dataset_NC_ART_PV/nc_img_test',
+                             target_dir='../datasets/Private_Dataset_NC_ART_PV/pv_img_test')
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
     for epoch in range(config.NUM_EPOCHS + 1):
@@ -102,12 +94,21 @@ def train():
             save_checkpoint(disc, opt_disc, filename=config.CHECKPOINT_DISC)
         save_some_examples(gen, val_loader, epoch, folder='evaluation')
 
+        plt.figure(figsize=(10, 5))
+        plt.title("Generator and Discriminator Loss During Training")
+        plt.plot(generator_losses, label="Generator Loss")
+        plt.plot(discriminator_losses, label="Discriminator Loss")
+        plt.xlabel("Iterations")
+        plt.ylabel("Loss")
+        plt.legend()
+        plt.show()
+
 
 def test():
     gen = Generator(in_channels=3).to(config.DEVICE)
     opt_gen = optim.Adam(gen.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
     load_checkpoint(config.CHECKPOINT_GEN, gen, opt_gen, config.LEARNING_RATE)
-    train_dataset = MapDataset(root_dir='../datasets/facades/train')
+    train_dataset = MapDataset(source_dir='../datasets/facades/train')
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False, num_workers=config.NUM_WORKERS)
     gen.eval()
     mse_loss = torch.nn.MSELoss()
@@ -121,23 +122,31 @@ def test():
     #     save_image(torch.concat((x, y, y_fake), 3), f'./evaluation/train_output/train_{idx}_{rmse:.3f}.png')
     # print(f'rmse_train={torch.tensor(rmse_train).mean().item()}')
 
-    val_dataset = MapDataset(root_dir='../datasets/facades/val')
+    val_dataset = MapDataset(source_dir='../datasets/facades/val')
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
     rmse_val = []
+    ssim_img = []
     for idx, (x, y) in enumerate(val_loader):
         x = x.to(config.DEVICE)
         y = y.to(config.DEVICE)
         y_fake = gen(x)
         rmse = torch.sqrt(mse_loss(y, y_fake))
         rmse_val.append(rmse)
-        save_image(torch.concat((x, y, y_fake), 3), f'./evaluation/val_output/val_{idx}_{rmse:.3f}.png')
+        ssim_loss = torchmetrics.image.StructuralSimilarityIndexMeasure()
+        ssim = ssim_loss(y_fake, x)
+        ssim_img.append(ssim)
+
+    # save_image(torch.concat((x, y, y_fake), 3), f'./evaluation/val_output/val_{idx}_{rmse:.3f}.png')
     print(f'rmse_val={torch.tensor(rmse_val).mean().item()}')
+    print(f'{torch.tensor(ssim_img).mean().item()}')
 
 
 def evaluate():
     img_path = './images'
     mse_loss = torch.nn.MSELoss()
+    ssim_loss = torchmetrics.image.StructuralSimilarityIndexMeasure()
     mse_img = []
+    ssim_img = []
     for img in (os.listdir(img_path)):
         prefix = img[0:-10]
         suffix = img[-10:]
@@ -147,11 +156,18 @@ def evaluate():
             fake_img = np.array(Image.open(img_path + '/' + prefix + 'fake_B.png')).astype(dtype=np.float32) / 255
             fake_img = torch.tensor(fake_img).permute(2, 0, 1)
             loss = mse_loss(real_img, fake_img)
+            real_img = real_img.unsqueeze(0)
+            fake_img = fake_img.unsqueeze(0)
+            ssim = ssim_loss(real_img, fake_img)
             mse_img.append(loss)
-    print(f'{torch.tensor(mse_img).mean().item():.3f}')
+            ssim_img.append(ssim)
+    print(f'{torch.tensor(mse_img).mean().item()}')
+    print(f'{torch.tensor(ssim_img).mean().item()}')
 
 
 if __name__ == '__main__':
-    # train()
+    train()
     # test()
-    evaluate()
+    # evaluate()
+    # psnr_val = 10 * math.log10(1 / (0.2246 ** 2))
+    # print(psnr_val)
