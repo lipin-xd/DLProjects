@@ -1,29 +1,45 @@
+import math
 import os
 
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchmetrics.image
-from PIL import Image
+from skimage.metrics import structural_similarity as ssim
 from torch.utils.data import DataLoader
+from sklearn.metrics import mean_squared_error
+from torchvision.utils import save_image
 from tqdm import tqdm
 
 import config
 from dataset import MapDataset
 from discriminator import Discriminator
 from generator import Generator
-from utils import load_checkpoint, save_checkpoint, save_some_examples
+from utils import load_checkpoint, save_checkpoint, save_some_examples, denormalize
 
 generator_losses = []
 discriminator_losses = []
 
 
+def mae(img1, img2):
+    mae = np.mean(abs(img1 - img2))
+    return mae
+
+
+def psnr(img1, img2):
+    mse = np.mean((img1 - img2) ** 2)
+    if mse == 0:
+        return 100
+    PIXEL_MAX = np.max(img1)
+    return 20 * math.log10(PIXEL_MAX / math.sqrt(mse))
+
+
 def train_fn(disc, gen, loader, opt_disc, opt_gen, l1_loss, bce, epoch):
     loop = tqdm(loader, leave=True)
 
-    for i, (label_img, real_img) in enumerate(loop):
+    for i, (label_img, real_img, name) in enumerate(loop):
 
         label_img = label_img.to(config.DEVICE)
         real_img = real_img.to(config.DEVICE)
@@ -105,69 +121,41 @@ def train():
 
 
 def test():
-    gen = Generator(in_channels=3).to(config.DEVICE)
+    output_path = './output'
+    gen = Generator(in_channels=1).to(config.DEVICE)
     opt_gen = optim.Adam(gen.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
-    load_checkpoint(config.CHECKPOINT_GEN, gen, opt_gen, config.LEARNING_RATE)
-    train_dataset = MapDataset(source_dir='../datasets/facades/train')
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False, num_workers=config.NUM_WORKERS)
+    chcekpoint_gen = 'gen.pth.nc2pv.tar'
+    load_checkpoint(chcekpoint_gen, gen, opt_gen, config.LEARNING_RATE)
     gen.eval()
-    mse_loss = torch.nn.MSELoss()
-    rmse_train = []
-    # for idx, (x, y) in enumerate(train_loader):
-    #     x = x.to(config.DEVICE)
-    #     y = y.to(config.DEVICE)
-    #     y_fake = gen(x)
-    #     rmse = torch.sqrt(mse_loss(y, y_fake))
-    #     rmse_train.append(rmse)
-    #     save_image(torch.concat((x, y, y_fake), 3), f'./evaluation/train_output/train_{idx}_{rmse:.3f}.png')
-    # print(f'rmse_train={torch.tensor(rmse_train).mean().item()}')
-
-    val_dataset = MapDataset(source_dir='../datasets/facades/val')
+    val_dataset = MapDataset(source_dir='../datasets/Private_Dataset_NC_ART_PV/nc_img_test',
+                             target_dir='../datasets/Private_Dataset_NC_ART_PV/pv_img_test')
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
-    rmse_val = []
-    ssim_img = []
-    for idx, (x, y) in enumerate(val_loader):
-        x = x.to(config.DEVICE)
-        y = y.to(config.DEVICE)
-        y_fake = gen(x)
-        rmse = torch.sqrt(mse_loss(y, y_fake))
-        rmse_val.append(rmse)
-        ssim_loss = torchmetrics.image.StructuralSimilarityIndexMeasure()
-        ssim = ssim_loss(y_fake, x)
-        ssim_img.append(ssim)
-
-    # save_image(torch.concat((x, y, y_fake), 3), f'./evaluation/val_output/val_{idx}_{rmse:.3f}.png')
-    print(f'rmse_val={torch.tensor(rmse_val).mean().item()}')
-    print(f'{torch.tensor(ssim_img).mean().item()}')
+    for index, (nc_image, pv_image, image_name) in enumerate(val_loader):
+        nc_image = nc_image.to(config.DEVICE)
+        pv_fake = gen(nc_image)
+        save_image(denormalize(pv_fake), os.path.join(output_path, image_name[0]))
 
 
 def evaluate():
-    img_path = './images'
-    mse_loss = torch.nn.MSELoss()
-    ssim_loss = torchmetrics.image.StructuralSimilarityIndexMeasure()
-    mse_img = []
-    ssim_img = []
-    for img in (os.listdir(img_path)):
-        prefix = img[0:-10]
-        suffix = img[-10:]
-        if (suffix == 'real_B.png'):
-            real_img = np.array(Image.open(img_path + '/' + prefix + 'real_B.png')).astype(dtype=np.float32) / 255
-            real_img = torch.tensor(real_img).permute(2, 0, 1)
-            fake_img = np.array(Image.open(img_path + '/' + prefix + 'fake_B.png')).astype(dtype=np.float32) / 255
-            fake_img = torch.tensor(fake_img).permute(2, 0, 1)
-            loss = mse_loss(real_img, fake_img)
-            real_img = real_img.unsqueeze(0)
-            fake_img = fake_img.unsqueeze(0)
-            ssim = ssim_loss(real_img, fake_img)
-            mse_img.append(loss)
-            ssim_img.append(ssim)
-    print(f'{torch.tensor(mse_img).mean().item()}')
-    print(f'{torch.tensor(ssim_img).mean().item()}')
+    pv_images_path = '../datasets/Private_Dataset_NC_ART_PV/pv_img_test'
+    generated_images_path = './output'
+    generated_images_dir = os.listdir(generated_images_path)
+    sum_mse = 0
+    sum_psnr = 0
+    sum_ssim = 0
+    for image_name in generated_images_dir:
+        generated_image = cv2.imread(os.path.join(generated_images_path, image_name), cv2.IMREAD_GRAYSCALE)
+        pv_test_image = cv2.imread(os.path.join(pv_images_path, image_name), cv2.IMREAD_GRAYSCALE)
+        sum_mse += mean_squared_error(generated_image, pv_test_image)
+        sum_psnr += psnr(generated_image, pv_test_image)
+        sum_ssim += ssim(generated_image, pv_test_image)
+    image_count = len(generated_images_dir)
+    print(f"mse={sum_mse / image_count} psnr={sum_psnr / image_count} ssim={sum_ssim / image_count}")
 
 
 if __name__ == '__main__':
-    train()
+    # train()
     # test()
-    # evaluate()
+    evaluate()
     # psnr_val = 10 * math.log10(1 / (0.2246 ** 2))
     # print(psnr_val)

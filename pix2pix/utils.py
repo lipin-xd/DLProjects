@@ -7,8 +7,9 @@ import config
 def denormalize(tensor):
     return (tensor + 1) / 2
 
+
 def save_some_examples(gen, val_loader, epoch, folder):
-    x, y = next(iter(val_loader))
+    x, y, name = next(iter(val_loader))
     x, y = x.to(config.DEVICE), y.to(config.DEVICE)
     gen.eval()
     with torch.no_grad():
@@ -34,9 +35,9 @@ def save_checkpoint(model, optimizer, filename="my_checkpoint.pth.tar"):
     torch.save(checkpoint, filename)
 
 
-def load_checkpoint(checkpoint_file, model, optimizer, lr):
+def load_checkpoint(checkpoint_file, model, optimizer, lr, device=config.DEVICE):
     print("=> Loading checkpoint")
-    checkpoint = torch.load(checkpoint_file, map_location=config.DEVICE)
+    checkpoint = torch.load(checkpoint_file, map_location=device)
     model.load_state_dict(checkpoint["state_dict"])
     optimizer.load_state_dict(checkpoint["optimizer"])
 

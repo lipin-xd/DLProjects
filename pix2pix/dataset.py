@@ -13,20 +13,19 @@ transform = transforms.Compose([
 ])
 
 
-def get_image(images_dir, index):
-    images = os.listdir(images_dir)
-    image_file = images[index]
-    img_path = os.path.join(images_dir, image_file)
-    image = Image.open(img_path).convert('L')
-    image = transform(image)
-    image = np.array(image)
-
-    return image
-
-
 class MapDataset(Dataset):
 
+    def get_image(self, images_dir, index):
+        images = os.listdir(images_dir)
+        self.image_name = images[index]
+        img_path = os.path.join(images_dir, self.image_name)
+        image = Image.open(img_path).convert('L')
+        image = transform(image)
+        image = np.array(image)
+        return image
+
     def __init__(self, source_dir, target_dir):
+        self.image_name = None
         self.source_dir = source_dir
         self.target_dir = target_dir
 
@@ -35,10 +34,10 @@ class MapDataset(Dataset):
         return len(images_list)
 
     def __getitem__(self, index):
-        source_image = get_image(self.source_dir, index)
-        target_image = get_image(self.target_dir, index)
+        source_image = self.get_image(self.source_dir, index)
+        target_image = self.get_image(self.target_dir, index)
 
-        return source_image, target_image
+        return source_image, target_image, self.image_name
 
 
 if __name__ == "__main__":
@@ -47,7 +46,8 @@ if __name__ == "__main__":
                          target_dir="../datasets/Private_Dataset_NC_ART_PV/pv_img_test")
     loader = DataLoader(dataset, batch_size=1)
     i = 0
-    for x, y in loader:
+    for x, y, name in loader:
+        print(x, y, name)
         # save_image(x, f"x{i}.png")
         # save_image(y, f"y{i}.png")
         i += 1
