@@ -7,7 +7,7 @@ class CNNBlock(nn.Module):
         super().__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel, out_channel, 4, stride, padding=1, bias=False),
-            nn.BatchNorm2d(out_channel),
+            nn.InstanceNorm2d(out_channel),
             nn.LeakyReLU(0.2)
         )
 
@@ -19,7 +19,7 @@ class Discriminator(nn.Module):
     def __init__(self, in_channel, features=[64, 128, 256, 512]):
         super().__init__()
         self.initial = nn.Sequential(
-            nn.Conv2d(in_channel * 2, features[0], kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(in_channel, features[0], kernel_size=4, stride=2, padding=1),
             nn.LeakyReLU(0.2)
         )
         # [64,128,128] -> [128,64,64] -> [256, 32,32] -> [512,31,31]
@@ -33,14 +33,12 @@ class Discriminator(nn.Module):
         layers.append(
             nn.Conv2d(in_channels, 1, kernel_size=4, stride=1, padding=1)  # [512,31,31] -> [1,30,30]
         )
-        layers.append(nn.Sigmoid())
         self.model = nn.Sequential(*layers)
 
-    def forward(self, x, y):
-        x = torch.cat([x, y], dim=1)
+    def forward(self, x):
         x = self.initial(x)
         x = self.model(x)
-        return x
+        return x.view(x.size(0), -1)
 
 
 def test():

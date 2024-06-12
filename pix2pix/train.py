@@ -4,12 +4,10 @@ import os
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
-import torch.nn as nn
 import torch.optim as optim
 from skimage.metrics import structural_similarity as ssim
-from torch.utils.data import DataLoader
 from sklearn.metrics import mean_squared_error
+from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 from tqdm import tqdm
 
@@ -17,7 +15,7 @@ import config
 from dataset import MapDataset
 from discriminator import Discriminator
 from generator import Generator
-from utils import load_checkpoint, save_checkpoint, save_some_examples, denormalize
+from utils import load_checkpoint, save_checkpoint, save_some_examples, denormalize, WGAN_GP_Loss
 
 generator_losses = []
 discriminator_losses = []
@@ -36,8 +34,12 @@ def psnr(img1, img2):
     return 20 * math.log10(PIXEL_MAX / math.sqrt(mse))
 
 
-def train_fn(disc, gen, loader, opt_disc, opt_gen, l1_loss, bce, epoch):
+def train_fn(disc, gen, loader, opt_disc, opt_gen, gp_loss, epoch):
+    global D_loss, G_loss
     loop = tqdm(loader, leave=True)
+
+    # 训练循环
+    n_critic = 5  # 每训练一次生成器，判别器更新的次数
 
     for i, (label_img, real_img, name) in enumerate(loop):
 
@@ -45,22 +47,20 @@ def train_fn(disc, gen, loader, opt_disc, opt_gen, l1_loss, bce, epoch):
         real_img = real_img.to(config.DEVICE)
 
         # Train Discriminator
-        generated_img = gen(label_img)
-        D_real = disc(label_img, real_img)
-        D_real_loss = bce(D_real, torch.ones_like(D_real))
-        D_fake = disc(label_img, generated_img.detach())
-        D_fake_loss = bce(D_fake, torch.zeros_like(D_fake))
-        D_loss = (D_real_loss + D_fake_loss) / 2
+        for _ in range(n_critic):
+            fake_img = gen(label_img).detach()
+            real_output = disc(real_img)
+            fake_output = disc(fake_img)
+            D_loss = gp_loss.discriminator_loss(real_output, fake_output, real_img, fake_img)
 
-        opt_disc.zero_grad()
-        D_loss.backward()
-        opt_disc.step()
+            opt_disc.zero_grad()
+            D_loss.backward()
+            opt_disc.step()
 
         # Train generator
-        D_fake = disc(label_img, generated_img)
-        G_fake_loss = bce(D_fake, torch.ones_like(D_fake))
-        L1 = l1_loss(generated_img, real_img) * config.L1_LAMBDA
-        G_loss = G_fake_loss + L1
+        fake_img = gen(label_img)
+        fake_output = disc(fake_img)
+        G_loss = gp_loss.generator_loss(fake_output)
 
         opt_gen.zero_grad()
         G_loss.backward()
@@ -68,32 +68,24 @@ def train_fn(disc, gen, loader, opt_disc, opt_gen, l1_loss, bce, epoch):
 
         if i % 10 == 0:
             loop.set_postfix(
-                D_real=torch.sigmoid(D_real).mean().item(),
-                D_fake=torch.sigmoid(D_fake).mean().item(),
-                D_fake_loss=D_fake_loss.mean().item(),
-                D_real_loss=D_real_loss.mean().item(),
                 D_loss=D_loss.mean().item(),
-
-                G_fake_loss=G_fake_loss.mean().item(),
-                L1_loss=L1.mean().item(),
                 G_loss=G_loss.mean().item(),
             )
-        if (i == loop.__len__() - 1):
-            generator_losses.append(G_loss.mean().item() / 10)
-            discriminator_losses.append(D_loss.mean().item())
+
+    generator_losses.append(G_loss.mean().item())
+    discriminator_losses.append(D_loss.mean().item())
 
 
 def train():
-    disc = Discriminator(in_channel=1).to(config.DEVICE)
-    gen = Generator(in_channels=1).to(config.DEVICE)
-    opt_disc = optim.Adam(disc.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
-    opt_gen = optim.Adam(gen.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
-    BCE = nn.BCEWithLogitsLoss()
-    L1_LOSS = nn.L1Loss()
+    discriminator = Discriminator(in_channel=1).to(config.DEVICE)
+    generator = Generator(in_channels=1).to(config.DEVICE)
+    opt_disc = optim.Adam(discriminator.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
+    opt_gen = optim.Adam(generator.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
+    gp_loss = WGAN_GP_Loss(discriminator)
 
     if config.LOAD_MODEL:
-        load_checkpoint(config.CHECKPOINT_GEN, gen, opt_gen, config.LEARNING_RATE)
-        load_checkpoint(config.CHECKPOINT_DISC, disc, opt_disc, config.LEARNING_RATE)
+        load_checkpoint(config.CHECKPOINT_GEN, generator, opt_gen, config.LEARNING_RATE)
+        load_checkpoint(config.CHECKPOINT_DISC, discriminator, opt_disc, config.LEARNING_RATE)
 
     train_dataset = MapDataset(source_dir='../datasets/Private_Dataset_NC_ART_PV/nc_img',
                                target_dir='../datasets/Private_Dataset_NC_ART_PV/pv_img')
@@ -104,11 +96,11 @@ def train():
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
     for epoch in range(config.NUM_EPOCHS + 1):
-        train_fn(disc, gen, train_loader, opt_disc, opt_gen, L1_LOSS, BCE, epoch)
+        train_fn(discriminator, generator, train_loader, opt_disc, opt_gen, gp_loss, epoch)
         if config.SAVE_MODEL and epoch % 20 == 0:
-            save_checkpoint(gen, opt_gen, filename=config.CHECKPOINT_GEN)
-            save_checkpoint(disc, opt_disc, filename=config.CHECKPOINT_DISC)
-        save_some_examples(gen, val_loader, epoch, folder='evaluation')
+            save_checkpoint(generator, opt_gen, filename=config.CHECKPOINT_GEN)
+            save_checkpoint(discriminator, opt_disc, filename=config.CHECKPOINT_DISC)
+        save_some_examples(generator, val_loader, epoch, folder='evaluation')
 
         plt.figure(figsize=(10, 5))
         plt.title("Generator and Discriminator Loss During Training")
@@ -154,8 +146,6 @@ def evaluate():
 
 
 if __name__ == '__main__':
-    # train()
+    train()
     # test()
-    evaluate()
-    # psnr_val = 10 * math.log10(1 / (0.2246 ** 2))
-    # print(psnr_val)
+    # evaluate()

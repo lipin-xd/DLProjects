@@ -45,3 +45,31 @@ def load_checkpoint(checkpoint_file, model, optimizer, lr, device=config.DEVICE)
     # and it will lead to many hours of debugging \:
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
+
+class WGAN_GP_Loss:
+    def __init__(self, discriminator, lambda_gp=10):
+        self.discriminator = discriminator
+        self.lambda_gp = lambda_gp
+
+    def gradient_penalty(self, real_images, fake_images):
+        batch_size, c, h, w = real_images.size()
+        alpha = torch.rand(batch_size, 1, 1, 1).to(real_images.device)
+        alpha = alpha.expand_as(real_images)
+        interpolated = alpha * real_images + (1 - alpha) * fake_images
+        interpolated.requires_grad_(True)
+
+        d_interpolated = self.discriminator(interpolated)
+        gradients = torch.autograd.grad(outputs=d_interpolated, inputs=interpolated,
+                                        grad_outputs=torch.ones(d_interpolated.size()).to(real_images.device),
+                                        create_graph=True, retain_graph=True, only_inputs=True)[0]
+        gradients = gradients.view(gradients.size(0), -1)
+        gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * self.lambda_gp
+        return gradient_penalty
+
+    def discriminator_loss(self, real_output, fake_output, real_images, fake_images):
+        wasserstein_distance = torch.mean(fake_output) - torch.mean(real_output)
+        gp = self.gradient_penalty(real_images, fake_images)
+        return wasserstein_distance + gp
+
+    def generator_loss(self, fake_output):
+        return -torch.mean(fake_output)
