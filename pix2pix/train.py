@@ -84,7 +84,7 @@ def train_fn(disc, gen, loader, opt_disc, opt_gen, l1_loss, bce, epoch):
 
 
 def train():
-    disc = Discriminator(in_channel=1).to(config.DEVICE)
+    disc = Discriminator(input_nc=1).to(config.DEVICE)
     gen = Generator(in_channels=1).to(config.DEVICE)
     opt_disc = optim.Adam(disc.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
     opt_gen = optim.Adam(gen.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
@@ -154,8 +154,8 @@ def evaluate():
 
 
 if __name__ == '__main__':
-    # train()
+    train()
     # test()
-    evaluate()
+    # evaluate()
     # psnr_val = 10 * math.log10(1 / (0.2246 ** 2))
     # print(psnr_val)
