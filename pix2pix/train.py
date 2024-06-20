@@ -8,15 +8,15 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from skimage.metrics import structural_similarity as ssim
-from torch.utils.data import DataLoader
 from sklearn.metrics import mean_squared_error
+from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 from tqdm import tqdm
 
 import config
 from dataset import MapDataset
 from discriminator import Discriminator
-from generator import Generator
+from generator import Generator, UnetGenerator
 from utils import load_checkpoint, save_checkpoint, save_some_examples, denormalize
 
 generator_losses = []
@@ -84,8 +84,14 @@ def train_fn(disc, gen, loader, opt_disc, opt_gen, l1_loss, bce, epoch):
 
 
 def train():
-    disc = Discriminator(input_nc=1).to(config.DEVICE)
-    gen = Generator(in_channels=1).to(config.DEVICE)
+    disc = Discriminator(input_nc=1)
+    gen = UnetGenerator(input_nc=1, output_nc=1, num_downs=7)
+    if torch.cuda.is_available() and torch.cuda.device_count() > 1:
+        disc = nn.DataParallel(disc)
+        gen = nn.DataParallel(gen)
+    disc.to(config.DEVICE)
+    gen.to(config.DEVICE)
+
     opt_disc = optim.Adam(disc.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
     opt_gen = optim.Adam(gen.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
     BCE = nn.BCEWithLogitsLoss()
@@ -105,7 +111,7 @@ def train():
 
     for epoch in range(config.NUM_EPOCHS + 1):
         train_fn(disc, gen, train_loader, opt_disc, opt_gen, L1_LOSS, BCE, epoch)
-        if config.SAVE_MODEL and epoch % 20 == 0:
+        if config.SAVE_MODEL and epoch % 10 == 0:
             save_checkpoint(gen, opt_gen, filename=config.CHECKPOINT_GEN)
             save_checkpoint(disc, opt_disc, filename=config.CHECKPOINT_DISC)
         save_some_examples(gen, val_loader, epoch, folder='evaluation')
@@ -154,8 +160,8 @@ def evaluate():
 
 
 if __name__ == '__main__':
-    train()
-    # test()
-    # evaluate()
-    # psnr_val = 10 * math.log10(1 / (0.2246 ** 2))
-    # print(psnr_val)
+# train()
+# test()
+# evaluate()
+# psnr_val = 10 * math.log10(1 / (0.2246 ** 2))
+# print(psnr_val)

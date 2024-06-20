@@ -90,9 +90,9 @@ class Discriminator(nn.Module):
 
 
 def test():
-    x = torch.rand((1, 3, 256, 256))
-    y = torch.rand((1, 3, 256, 256))
-    model = Discriminator(input_nc=3)
+    x = torch.rand((1, 1, 512, 512))
+    y = torch.rand((1, 1, 512, 512))
+    model = Discriminator(input_nc=1)
     preds = model(x, y)
     print(preds.shape)
 
