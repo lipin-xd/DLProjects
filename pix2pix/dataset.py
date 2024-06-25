@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 
 transform = transforms.Compose([
-    transforms.Resize((512, 512)),
+    transforms.Resize((256, 256)),
     transforms.ToTensor(),  # 将图像转换为张量并自动添加通道维度
     transforms.Normalize(0.5, 0.5)
 ])

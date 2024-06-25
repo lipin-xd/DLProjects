@@ -8,3 +8,7 @@ venv/
 .DS_Store
 __pycache__/
 output/
+/pix2pix/results1B_Full_ITD_LabelvanillaMICCAI_DatasetDual_DDT_GAN250.00015121.zip
+/pix2pix/pretrained_model.zip
+/pix2pix/results1B_Full_ITD_LabelvanillaMICCAI_DatasetDual_DDT_GAN250.00015121/
+/pix2pix/models1B_Full_ITD_LabelvanillaMICCAI_DatasetDual_DDT_GAN250.00015121/

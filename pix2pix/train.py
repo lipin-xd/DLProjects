@@ -130,7 +130,7 @@ def test():
     output_path = './output'
     gen = Generator(in_channels=1).to(config.DEVICE)
     opt_gen = optim.Adam(gen.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
-    chcekpoint_gen = 'gen.pth.nc2pv.tar'
+    chcekpoint_gen = 'gen.pth.tar'
     load_checkpoint(chcekpoint_gen, gen, opt_gen, config.LEARNING_RATE)
     gen.eval()
     val_dataset = MapDataset(source_dir='../datasets/Private_Dataset_NC_ART_PV/nc_img_test',
@@ -160,8 +160,6 @@ def evaluate():
 
 
 if __name__ == '__main__':
-# train()
-# test()
-# evaluate()
-# psnr_val = 10 * math.log10(1 / (0.2246 ** 2))
-# print(psnr_val)
+    train()
+    test()
+    evaluate()
