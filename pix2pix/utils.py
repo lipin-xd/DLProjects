@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import torch
 from torchvision.utils import save_image
 
@@ -38,7 +40,12 @@ def save_checkpoint(model, optimizer, filename="my_checkpoint.pth.tar"):
 def load_checkpoint(checkpoint_file, model, optimizer, lr, device=config.DEVICE):
     print("=> Loading checkpoint")
     checkpoint = torch.load(checkpoint_file, map_location=device)
-    model.load_state_dict(checkpoint["state_dict"])
+    state_dict = OrderedDict()
+    for k, v in checkpoint['state_dict'].items():
+        k = k.replace('module.', '')
+        state_dict[k] = v
+
+    model.load_state_dict(state_dict)
     optimizer.load_state_dict(checkpoint["optimizer"])
 
     # If we don't do this then it will just have learning rate of old checkpoint

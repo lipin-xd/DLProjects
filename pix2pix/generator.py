@@ -175,8 +175,8 @@ class Generator(nn.Module):
 
 
 def test():
-    x = torch.randn((1, 3, 256, 256))
-    model = Generator(in_channels=3, features=64)
+    x = torch.randn((1, 1, 256, 256))
+    model = UnetGenerator(input_nc=1,output_nc=1, ngf=64,num_downs=7)
     preds = model(x)
     print(preds.shape)
 

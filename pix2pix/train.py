@@ -128,10 +128,10 @@ def train():
 
 def test():
     output_path = './output'
-    gen = Generator(in_channels=1).to(config.DEVICE)
+    gen = UnetGenerator(input_nc=1,output_nc=1, ngf=64,num_downs=7).to(config.DEVICE)
     opt_gen = optim.Adam(gen.parameters(), lr=config.LEARNING_RATE, betas=(0.5, 0.999))
-    chcekpoint_gen = 'gen.pth.tar'
-    load_checkpoint(chcekpoint_gen, gen, opt_gen, config.LEARNING_RATE)
+    checkpoint_gen = 'gen.pth.tar'
+    load_checkpoint(checkpoint_gen, gen, opt_gen, config.LEARNING_RATE)
     gen.eval()
     val_dataset = MapDataset(source_dir='../datasets/Private_Dataset_NC_ART_PV/nc_img_test',
                              target_dir='../datasets/Private_Dataset_NC_ART_PV/pv_img_test')
@@ -152,6 +152,7 @@ def evaluate():
     for image_name in generated_images_dir:
         generated_image = cv2.imread(os.path.join(generated_images_path, image_name), cv2.IMREAD_GRAYSCALE)
         pv_test_image = cv2.imread(os.path.join(pv_images_path, image_name), cv2.IMREAD_GRAYSCALE)
+        pv_test_image = cv2.resize(pv_test_image,(256,256))
         sum_mse += mean_squared_error(generated_image, pv_test_image)
         sum_psnr += psnr(generated_image, pv_test_image)
         sum_ssim += ssim(generated_image, pv_test_image)
@@ -161,5 +162,5 @@ def evaluate():
 
 if __name__ == '__main__':
     train()
-    test()
-    evaluate()
+    # test()
+    # evaluate()
